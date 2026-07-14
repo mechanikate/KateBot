@@ -1,0 +1,22 @@
+environ/
+__pycache__/
+econ/
+tips/
+
+# redundant stuff
+*.log
+*.bak
+old/
+
+# data
+*.json
+econ/
+tips/
+
+# local files
+environ/
+__pycache__/
+*/__pycache__/
+
+# don't leak the api keys/tokens
+run.sh
