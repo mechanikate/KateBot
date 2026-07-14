@@ -213,22 +213,27 @@ class BlackjackView(discord.ui.View):
 
         return embed
 class Card:
+    SUIT_LOGO_MAP = {"S": "♠", "H": "♥", "C": "♣", "D": "♦"}
+    SUIT_UID_MAP = {"S": 0, "H": 13, "C": 26, "D": 39}
+    RANK_SCORE_MAP = {"2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "J": 10, "Q": 10, "K": 10, "A": 11}
+    RANK_UID_MAP = {"2": 0, "3": 1, "4": 2, "5": 3, "6": 4, "7": 5, "8": 6, "9": 7, "10": 8, "J": 9, "Q": 10, "K": 11, "A": 12}
+    SUITS = list("SHCD")
+    RANKS = list("23456789")+["10","J","Q","K","A"]
     def __init__(self, suit, rank):
         self.suit = suit
         self.rank = rank
-        self.score = {"2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "J": 10, "Q": 10, "K": 10, "A": 11}[rank]
-        self.uid = {"S": 0, "H": 13, "C": 26, "D": 39}[suit]+{"2": 0, "3": 1, "4": 2, "5": 3, "6": 4, "7": 5, "8": 6, "9": 7, "10": 8, "J": 9, "Q": 10, "K": 11, "A": 12}[rank]
+        self.score = self.RANK_SCORE_MAP[rank]
+        self.uid = self.SUIT_UID_MAP[suit]+self.RANK_UID_MAP[rank]
     def render(self):
-        return {"S": "♠", "H": "♥", "C": "♣", "D": "♦"}[self.suit]+self.rank
+        return self.SUIT_LOGO_MAP[self.suit]+self.rank
     @staticmethod
     def from_uid(uid):
         rank_id = uid % 13
         suit_id = uid // 13
-        return Card(list("SHCD")[suit_id], (list("23456789")+["10","J","Q","K","A"])[rank_id])
+        return Card(self.SUITS[suit_id], self.RANKS[rank_id])
 
 class Deck:
     def __init__(self):
-        ranks, suits = list("23456789")+["10","J","Q","K","A"], list("SHCD")
         self.deck = []
         for uid in range(52):
             self.deck.append(Card.from_uid(uid))

@@ -7,6 +7,8 @@ tips/
 *.log
 *.bak
 old/
+main.py
+constants.py
 
 # data
 *.json
