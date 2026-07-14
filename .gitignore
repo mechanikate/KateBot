@@ -17,6 +17,7 @@ tips/
 environ/
 __pycache__/
 */__pycache__/
+*.save
 
 # don't leak the api keys/tokens
 run.sh
