@@ -5,12 +5,14 @@ from discord.ext import commands
 
 ECON_PATH = "/home/kate/bots/katebot-2.0/econ/"
 
+format_balance = lambda balance: "${balance:.2f}".format(balance=balance)
+
 class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         
     def retrieve_data(self, server_id: int):
-        data = {"odds_power": 3, "balances": {}}
+        data = {"odds_power": 3, "balances": {}, "payout_mults": {"win": 1.5, "blackjack": 2, "forfeit": 0.5}}
         try:
             with open(f"{ECON_PATH}/{server_id}.json", "r") as f:
                 data = json.load(f)
@@ -43,6 +45,154 @@ class Economy(commands.Cog):
         data["odds_power"]=odds_power
         self.save_data(data, server_id)
 
+    def store_payout_mults(self, payout_mults, server_id: int):
+        data = self.retrieve_data(server_id)
+        data["payout_mults"] = payout_mults
+        self.save_data(data, server_id)
+
+    def retrieve_payout_mults(self, server_id: int):
+        data = self.retrieve_data(server_id)
+        if("payout_mults" not in data):
+            data["payout_mults"] = {"win": 1.5, "blackjack": 2, "forfeit": 0.5}
+        return data["payout_mults"]
+
+# regular economy activities e.g. viewing balances, viewing leaderboard of server, admin balance commands
+class RegularActivities(commands.Cog):
+
+    admin_commands = app_commands.Group(name="adminbalances", description="Economy management commands for server admins")
+    admin_payout_commands = app_commands.Group(name="adminpayouts", description="Blackjack payout percentage commands for server admins")
+
+    def __init__(self, bot):
+        self.bot = bot
+
+    @app_commands.command(
+        name="balance",
+        description="Get your current account balance from gambling"
+    )
+    @app_commands.describe(
+        user="(Optional) The user to get the balance of. Defaults to the sender"
+    )
+    async def balance(self, interaction: discord.Interaction, user: discord.User = None):
+        if(user is None):
+            user = interaction.user
+        user_id = str(user.id)
+        economy = self.bot.get_cog("Economy")
+        balance = economy.retrieve_balance(user_id, interaction.guild.id) 
+        await interaction.response.send_message(f"{user.name} has {format_balance(balance)}.")
+
+    @app_commands.command(
+        name="leaderboard",
+        description="Get the richest members of the server"
+    )
+    async def leaderboard(self, interaction: discord.Interaction):
+        i = 0
+        economy = self.bot.get_cog("Economy")
+        embed = discord.Embed(title="Leaderboard")
+        for user_id, balance in sorted(economy.retrieve_data(interaction.guild.id)["balances"].items(), key=lambda v: v[1], reverse=True):
+            if(i > 25):
+                break
+            user = await self.bot.fetch_user(user_id)
+            if not user: 
+                continue
+            embed.add_field(name=f"{user.name}: {format_balance(balance)}", value="", inline=False)
+            i+=1
+        await interaction.response.send_message(embed=embed)
+
+    # /admin ...
+    @admin_commands.command(
+        name="set",
+        description="Set user's balance"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def admin_set(self, interaction: discord.Interaction, new_balance: float, target_user: discord.User = None):
+        if(target_user is None):
+            target_user = interaction.user
+        user_id = str(target_user.id)
+        economy = self.bot.get_cog("Economy")
+        try:
+            economy.store_balance(user_id, new_balance, interaction.guild.id)
+            await interaction.response.send_message(f"Set balance of {target_user.name} to ${format_balance(new_balance)}.")
+        except:
+            await interaction.response.send_message(f"Failed to set balance of {target_user.name} to {format_balance(new_balance)}, please send mechanikate a notice about this.")
+
+    @admin_commands.command(
+        name="give",
+        description="Give user money"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def admin_give(self, interaction: discord.Interaction, amount: float, target_user: discord.User = None):
+        if(target_user is None):
+            target_user = interaction.user
+        user_id = str(target_user.id)
+        economy = self.bot.get_cog("Economy")
+        try:
+            balance = economy.retrieve_balance(user_id, interaction.guild.id)
+            new_balance = balance + amount
+            economy.store_balance(user_id, new_balance, interaction.guild.id)
+            await interaction.response.send_message(f"Set balance of {target_user.name} from {format_balance(balance)} to {format_balance(new_balance)}.")
+        except:
+            await interaction.response.send_message(f"Failed to set balance of {target_user.name} from {format_balance(balance)} to {format_balance(new_balance)}, please send mechanikate a notice about this.")
+
+    @admin_commands.command(
+        name="remove",
+        description="Remove user money"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def admin_remove(self, interaction: discord.Interaction, amount: float, target_user: discord.User = None):
+        if(target_user is None):
+            target_user = interaction.user
+        user_id = str(target_user.id)
+        economy = self.bot.get_cog("Economy")
+        try:
+            balance = economy.retrieve_balance(user_id, interaction.guild.id)
+            new_balance = balance - amount
+            economy.store_balance(user_id, new_balance, interaction.guild.id)
+            await interaction.response.send_message(f"Set balance of {target_user.name} from ${format_balance(balance)} to {format_balance(new_balance)}.")
+        except:
+            await interaction.response.send_message(f"Failed to set balance of {target_user.name} from {format_balance(balance)} to {format_balance(new_balance)}, please send mechanikate a notice about this.")
+
+    async def econ_set_handler(self, interaction, setter_function, params=["user_id", "value", "guild_id"], target_user: discord.User = None, value=0, getter_function = lambda economy: None):
+        if(target_user is None):
+            target_user = interaction.user
+        user_id = str(target_user.id)
+        economy = self.bot.get_cog("Economy")
+        spec_params = []
+        if("user_id" in params):
+            spec_params.append(user_id)
+        if("value" in params):
+            spec_params.append(value)
+        if("guild_id" in params):
+            spec_params.append(interaction.guild.id)
+        prev = getter_function(economy, *spec_params)
+        try:
+            prev_copy = prev.copy()
+            curr = await setter_function(economy, prev, *spec_params)
+            return 1, prev_copy, curr
+        except:
+            return 0, prev, None
+
+    async def econ_set_mult_handler(self, interaction, multiplier: float, prop_name: str):
+        async def setter_func(economy, prev, value, guild_id):
+            prev[prop_name] = value
+            economy.store_payout_mults(prev, guild_id)
+            return value
+        ret_code, prev, curr = await self.econ_set_handler(interaction, setter_func, params=["value", "guild_id"], value=multiplier, getter_function = lambda economy, val, guild_id: economy.retrieve_payout_mults(guild_id))
+        await interaction.response.send_message(f"Set {prop_name} multiplier from {prev[prop_name]}x to {curr}x." if ret_code else f"Failed to set {prop_name} multiplier from {prev[prop_name]}x to {multiplier}x, please send mechanikate a notice about this.")
+
+    @admin_payout_commands.command(name="win")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def admin_set_win(self, interaction: discord.Interaction, multiplier: float = 1.5):
+        await self.econ_set_mult_handler(interaction, multiplier, "win")
+    @admin_payout_commands.command(name="blackjack")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def admin_set_blackjack(self, interaction: discord.Interaction, multiplier: float = 2.0):
+        await self.econ_set_mult_handler(interaction, multiplier, "blackjack")
+    @admin_payout_commands.command(name="forfeit")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def admin_set_forfeit(self, interaction: discord.Interaction, multiplier: float = 0.5):
+        await self.econ_set_mult_handler(interaction, multiplier, "forfeit")
+
+
 class Gambling(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -68,21 +218,6 @@ class Gambling(commands.Cog):
         await interaction.response.send_message("You lost $1.00 :(")
 
     @app_commands.command(
-        name="balance",
-        description="Get your current account balance from gambling"
-    )
-    @app_commands.describe(
-        user="(Optional) The user to get the balance of. Defaults to the sender"
-    )
-    async def balance(self, interaction: discord.Interaction, user: discord.User = None):
-        if(user is None):
-            user = interaction.user
-        user_id = str(user.id)
-        economy = self.bot.get_cog("Economy")
-        balance = economy.retrieve_balance(user_id, interaction.guild.id) 
-        await interaction.response.send_message("{name} has ${bal:.2f}.".format(name=user.name, bal=balance))
-    
-    @app_commands.command(
         name="blackjack",
         description="Play blackjack against the bot"
     )
@@ -90,38 +225,21 @@ class Gambling(commands.Cog):
         wager="(Defaults to $1.00) How much to wager against the bot"
     )
     async def blackjack(self, interaction: discord.Interaction, wager: float = 1.0):
-        view = BlackjackView(wager, self.bot, interaction)
         economy = self.bot.get_cog("Economy")
+        view = BlackjackView(wager, self.bot, interaction)
         if(wager > max(5,economy.retrieve_balance(interaction.user.id, interaction.guild.id))):
             await interaction.response.send_message("You can only gamble up to your balance (or $5 if you have <$5)!")
             return
         economy.store_balance(interaction.user.id, economy.retrieve_balance(interaction.user.id, interaction.guild.id)-wager, interaction.guild.id)
         await interaction.response.send_message(embed=BlackjackView.make_blackjack_embed(interaction, view.blackjack), view=view)
 
-    @app_commands.command(
-        name="leaderboard",
-        description="Get the richest members of the server"
-    )
-    async def leaderboard(self, interaction: discord.Interaction):
-        i = 0
-        economy = self.bot.get_cog("Economy")
-        embed = discord.Embed(title="Leaderboard")
-        for user_id, balance in sorted(economy.retrieve_data(interaction.guild.id)["balances"].items(), key=lambda v: v[1], reverse=True):
-            if(i > 25):
-                break
-            user = await self.bot.fetch_user(user_id)
-            if not user: 
-                continue
-            embed.add_field(name=f"{user.name}: {balance:10.2f}", value="", inline=False)
-            i+=1
-        await interaction.response.send_message(embed=embed)
 class BlackjackView(discord.ui.View):
     def __init__(self, wager, bot, start_interaction):
         super().__init__()
         self.wager = wager
         self.bot = bot
         self.start_interaction = start_interaction
-        self.blackjack = BlackjackGame(wager)
+        self.blackjack = BlackjackGame(self.bot, start_interaction.guild.id, start_interaction.user.id, wager)
 
     async def disable_if_over(self, msg):
         msg = msg.resource if hasattr(msg, "resource") else msg
@@ -230,7 +348,7 @@ class Card:
     def from_uid(uid):
         rank_id = uid % 13
         suit_id = uid // 13
-        return Card(self.SUITS[suit_id], self.RANKS[rank_id])
+        return Card(Card.SUITS[suit_id], Card.RANKS[rank_id])
 
 class Deck:
     def __init__(self):
@@ -247,7 +365,10 @@ class Deck:
         return drawn
 
 class BlackjackGame:
-    def __init__(self, wager=1):
+    def __init__(self, bot, guild_id, user_id, wager=1):
+        self.bot = bot
+        self.guild_id = guild_id
+        self.user_id = user_id
         self.deck = Deck().shuffle()
         self.player_hand = self.deck.draw(2)
         self.dealer_hand = self.deck.draw(2)
@@ -289,15 +410,16 @@ class BlackjackGame:
             return f"KateBot won (higher score)"
         return "Tie (same scores)"
     def player_won(self): # calculate player profit
+        payout_mults = self.bot.get_cog("Economy").retrieve_payout_mults(self.guild_id)
         player_score, dealer_score = self.score() 
         if(self.forfeit):
-            return 0.5*self.wager
+            return payout_mults["forfeit"]*self.wager
         if(player_score > 21):
             return 0
         if(player_score == 21):
-            return 2*self.wager
+            return payout_mults["blackjack"]*self.wager
         if(dealer_score > 21 or dealer_score < player_score):
-            return 1.5*self.wager
+            return payout_mults["win"]*self.wager
         if(dealer_score > player_score):
             return 0
         return self.wager
@@ -324,9 +446,10 @@ class BlackjackGame:
             self.player_done = True
             self.forfeit = True
             self.dealer_done = True
-            return 0.5*self.wager
+            return self.bot.get_cog("Economy").retrieve_payout_mults(self.guild_id)["forfeit"]*self.wager
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Economy(bot))
+    await bot.add_cog(RegularActivities(bot))
     await bot.add_cog(Gambling(bot))
 
