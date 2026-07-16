@@ -8,6 +8,7 @@ Hello! This is my Python-based Discord bot.
 App commands for KateBot.
 
 <h2>Economy</h2>
+<i>Category.</i>
 
 <h4><code>/balance [user]</code></h4>
 View the balance of a specific person. 
@@ -76,3 +77,34 @@ Sets the payout multiplier for forfeiting in blackjack to <code>multiplier</code
 <br /><br />
 <i>Example output.</i>
 <code>/adminpayouts forfeit multiplier:0.25</code> &rarr; <code>Set blackjack multiplier from 0.5x to 0.25x.</code>
+
+<h2>Fun</h2>
+<i>Category.</i>
+
+<h4><code>/consulify (message) [as_emojis]</code></h4>
+Turns string <code>message</code> into Xenoblade Chronicles' Consuls as emojis by default (with <code>as_emojis = true</code>). Also can be requested into raw text via setting <code>as_emojis = false</code>.
+Spaces in <code>message</code> result in new lines.
+
+<br /><br />
+<i>Example output.</i>
+<code>/consulify message: Hello as_emojis: false</code> &rarr; <code>:Hh: :Ee: :Ll: :Ll: :Oo:</code>
+
+<h4><code>/kateban (user)</code></h4>
+"Bans" user <code>user</code>. The user is not banned in actuality, the command just sends a success message saying that user <code>user</code> was banned.
+Some users cannot be fake banned, including KateBot itself, the bot's owner, and other configurable users. In these cases, the bot will respond with hostility.
+<br /><br />
+<i>Example output.</i>
+<code>/kateban user: @example_user reason: test</code> &rarr; <code>✅: @example_user has been banned for reason: test</code>
+
+<h4><code>/wisdom</code></h4>
+Gives 1 piece of wisdom from bot developer mechanikate, configurable in <code>cogs/fun_commands.py</code>'s <code>wisdom_list</code> constant. Runnable once per hour per guild.
+<br /><br />
+<i>Example output.</i>
+<code>/wisdom</code> &rarr; <code>8. Nobody knows how the water got in the coconut. It's a fact of life.</code>
+
+<h4><code>/coinflip</code></h4>
+Flips a coin. 
+<br /><br />
+<i>Example output.</i>
+<code>/coinflip</code> &rarr; <code>It's tails! Now at 43/85 (50.588235294117645%) tails.</code>
+
