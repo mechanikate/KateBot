@@ -1,7 +1,6 @@
 import asyncio, discord, os, pathlib, time
 
 from discord.ext import commands
-from cogs.economy import Economy, Gambling
 
 class KateBot(commands.Bot):
     _watcher: asyncio.Task
