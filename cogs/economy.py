@@ -111,7 +111,7 @@ class RegularActivities(commands.Cog):
         economy = self.bot.get_cog("Economy")
         try:
             economy.store_balance(user_id, new_balance, interaction.guild.id)
-            await interaction.response.send_message(f"Set balance of {target_user.name} to ${format_balance(new_balance)}.")
+            await interaction.response.send_message(f"Set balance of {target_user.name} to {format_balance(new_balance)}.")
         except:
             await interaction.response.send_message(f"Failed to set balance of {target_user.name} to {format_balance(new_balance)}, please send mechanikate a notice about this.")
 
@@ -147,7 +147,7 @@ class RegularActivities(commands.Cog):
             balance = economy.retrieve_balance(user_id, interaction.guild.id)
             new_balance = balance - amount
             economy.store_balance(user_id, new_balance, interaction.guild.id)
-            await interaction.response.send_message(f"Set balance of {target_user.name} from ${format_balance(balance)} to {format_balance(new_balance)}.")
+            await interaction.response.send_message(f"Set balance of {target_user.name} from {format_balance(balance)} to {format_balance(new_balance)}.")
         except:
             await interaction.response.send_message(f"Failed to set balance of {target_user.name} from {format_balance(balance)} to {format_balance(new_balance)}, please send mechanikate a notice about this.")
 

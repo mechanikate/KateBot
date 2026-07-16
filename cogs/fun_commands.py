@@ -1,4 +1,4 @@
-import discord, random, re
+import discord, json, random, re
 
 from discord import app_commands
 from discord.ext import commands
@@ -89,13 +89,31 @@ There is a comment on a video titled "Bernie Sanders 8 1/2 hour Filibuster but i
 > Fuck I'm gunna smoke the fattest blunt and fall asleep to this, hope I find a new timeline.
 Godspeed, lucienlachance9294."""
 ]
-
+FUN_PATH = "/home/kate/bots/katebot-2.0/"
 BLACKLISTED_USERS = [1024300377761386526]
 UNBANNABLE_USERS = [292043731237076992, 466670325317238784, 1325537288662286477]
-class FunCommands(commands.Cog):
+class FunStorage(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    def retrieve_data(self):
+        data = {"tails": 0, "total": 0}
+        try:
+            with open(f"{FUN_PATH}/fun.json", "r") as f:
+                data = json.load(f)
+        except json.JSONDecodeError, FileNotFoundError:
+            self.save_data(data)
+        return data
+
+    def save_data(self, data):
+        with open(f"{FUN_PATH}/fun.json", "w+") as f:
+            json.dump(data, f)
+
+
+class FunCommands(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        
     @app_commands.command( # equivalent to dming katebot in prev. versions
         name="consulify",
         description="Turn a message into Consul emojis (e.g. abc --> :Aa: :Bb: :Cc:)",
@@ -137,6 +155,19 @@ class FunCommands(commands.Cog):
     async def cog_app_command_error(self, ctx: discord.Interaction, error: commands.CommandError):
         await ctx.response.send_message(f"Command on cooldown for another {int(error.retry_after+1)} seconds!", ephemeral=True)
 
+    @app_commands.command(
+        name="coinflip",
+        description="Flip a coin."
+    )
+    async def coinflip(self, interaction):
+        storage = self.bot.get_cog("FunStorage")
+        data = storage.retrieve_data()
+        data["total"] += 1
+        flip_result = random.randint(0,1)
+        data["tails"] += flip_result
+        storage.save_data(data)
+        await interaction.response.send_message([f"It's heads! Now at {data['total']-data['tails']}/{data['total']} ({100-100*data['tails']/data['total']}%) heads.", f"It's tails! Now at {data['tails']}/{data['total']} ({100*data['tails']/data['total']}%) tails."][flip_result])
 
 async def setup(bot: commands.Bot) -> None:
+    await bot.add_cog(FunStorage(bot))
     await bot.add_cog(FunCommands(bot))
