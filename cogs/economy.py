@@ -1,4 +1,4 @@
-import asyncio, discord, json, random
+import asyncio, discord, json, math, random
 
 from discord import app_commands
 from discord.ext import commands
@@ -12,7 +12,7 @@ class Economy(commands.Cog):
         self.bot = bot
         
     def retrieve_data(self, server_id: int):
-        data = {"odds_power": 3, "balances": {}, "payout_mults": {"win": 1.5, "blackjack": 2, "forfeit": 0.5}}
+        data = {"odds_power": 3, "balances": {}, "payout_mults": {"win": 1.5, "blackjack": 2, "forfeit": 0.5}, "userstore": {}}
         try:
             with open(f"{ECON_PATH}/{server_id}.json", "r") as f:
                 data = json.load(f)
@@ -31,7 +31,7 @@ class Economy(commands.Cog):
             self.save_data(data, server_id)
         return data["balances"][str(user_id)]
     
-    def store_balance(self, user_id: str, amount: float, server_id: int):
+    def store_balance(self, user_id, amount: float, server_id: int):
         data = self.retrieve_data(server_id)
         data["balances"][str(user_id)] = amount
         self.save_data(data, server_id)
@@ -55,6 +55,22 @@ class Economy(commands.Cog):
         if("payout_mults" not in data):
             data["payout_mults"] = {"win": 1.5, "blackjack": 2, "forfeit": 0.5}
         return data["payout_mults"]
+
+    def store_user_data(self, user_id: str, val, server_id: int):
+        data = self.retrieve_data(server_id)
+        if("userstore" not in data or str(user_id) not in data["userstore"]):
+            data["userstore"] = {}
+            data["userstore"][str(user_id)] = {"multigamble": 1}
+        data["userstore"][str(user_id)] = val
+        self.save_data(data, server_id)
+
+    def retrieve_user_data(self, user_id: str, server_id: int):
+        data = self.retrieve_data(server_id)
+        if("userstore" not in data):
+            data["userstore"] = {}
+        if("userstore" not in data or str(user_id) not in data["userstore"]):
+            data["userstore"][str(user_id)] = {"multigamble": 1}
+        return data["userstore"][str(user_id)]
 
 # regular economy activities e.g. viewing balances, viewing leaderboard of server, admin balance commands
 class RegularActivities(commands.Cog):
@@ -202,24 +218,37 @@ class Gambling(commands.Cog):
         name="gamble",
         description="Gamble your life savings"
     )
-    async def gamble(self, interaction: discord.Interaction):
+    async def gamble(self, interaction: discord.Interaction, amount: int = 1):
         """ 
         Gambles 1 dollar at a time. Odds start at P(0.5) to gain anywhere from $0.75 to $1.33 (uniformly distributed), earnings *and* rarity of winning doubles every 3 wins on a per-server basis.
         """
+        if(amount < 1): 
+            await interaction.response.send_message("You're gambling nothing? Loser.")
+            return
         user_id = str(interaction.user.id)
         economy = self.bot.get_cog("Economy")
-        balance = economy.retrieve_balance(user_id, interaction.guild.id)
-        cap = 2**(economy.retrieve_odds_power(interaction.guild.id)//3)
-        rand = random.randint(1,cap)
-        if(rand == cap): # if P(0.5**floor(odds_power/3)) chance hits, then mark as win
-            winnings = cap+random.uniform(-cap/4, cap/3) # this should make /gamble a net gain overall
-            economy.store_balance(user_id, balance+winnings, interaction.guild.id) # add winnings
-            economy.store_odds_power(economy.retrieve_odds_power(interaction.guild.id)+1, interaction.guild.id) # increment odds power
-            await interaction.response.send_message("You win ${winnings:.2f}!".format(winnings=winnings)) # send win message
-            return # exit so we don't hit the loss code
-        # loss code
-        economy.store_balance(user_id, balance-1, interaction.guild.id) # remove $1 from gambler balance
-        await interaction.response.send_message("You lost $1.00 :(") # send loss message
+        if(amount > economy.retrieve_user_data(interaction.user.id, interaction.guild.id)["multigamble"]):
+            await interaction.response.send_message("Your multigamble is too low to gamble that many times at once!")
+            return
+        net_income = 0
+        for run_ct in range(amount):
+            balance = economy.retrieve_balance(user_id, interaction.guild.id)
+            cap = 2**(economy.retrieve_odds_power(interaction.guild.id)//3)
+            rand = random.randint(1,cap)
+            if(rand == cap): # if P(0.5**floor(odds_power/3)) chance hits, then mark as win
+                winnings = cap+random.uniform(-cap/10, 2*cap) # this should make /gamble a net gain overall
+                net_income += winnings
+                economy.store_balance(user_id, balance+winnings, interaction.guild.id) # add winnings
+                economy.store_odds_power(economy.retrieve_odds_power(interaction.guild.id)+1, interaction.guild.id) # increment odds power
+            else: # loss code
+                economy.store_balance(user_id, balance-1, interaction.guild.id) # remove $1 from gambler balance
+                net_income -= 1
+        if(net_income > 0):
+            await interaction.response.send_message(f"You win {format_balance(net_income)}!") # send loss message
+        elif(net_income == 0):
+            await interaction.response.send_message(f"You... broke even, somehow?") # send neutral message
+        else:
+            await interaction.response.send_message(f"You lost {format_balance(-net_income)} :(") # send loss message
 
     @app_commands.command(
         name="blackjack",
@@ -236,6 +265,51 @@ class Gambling(commands.Cog):
             return
         economy.store_balance(interaction.user.id, economy.retrieve_balance(interaction.user.id, interaction.guild.id)-wager, interaction.guild.id) # withdraw wager from account
         await interaction.response.send_message(embed=BlackjackView.make_blackjack_embed(interaction, view.blackjack), view=view) # send the embed to user
+    @app_commands.command(
+        name="store",
+        description="Buy gamba upgrades"
+    )
+    async def gamble_store(self, interaction: discord.Interaction):
+        economy = self.bot.get_cog("Economy")
+        view = UpgradeView(self.bot, interaction) # generate the fancy embed
+        await interaction.response.send_message(embed=view.make_upgrade_embed(interaction), view=view) # send the embed to user
+
+class UpgradeView(discord.ui.View):
+    def __init__(self, bot, start_interaction):
+        super().__init__()
+        self.bot = bot
+        self.start_interaction = start_interaction
+
+    def make_upgrade_embed(self, interaction):
+        economy = self.bot.get_cog("Economy")
+        dat = economy.retrieve_user_data(interaction.user.id, interaction.guild.id)
+        embed = discord.Embed(title=f"Upgrades of {interaction.user.name}")
+        embed.add_field(name=f"Multigamble ({dat['multigamble']})", value=f"{format_balance(40*7**math.log(dat['multigamble'],2))}", inline=False)
+        return embed
+
+    @discord.ui.button(label="Multigamble", style=discord.ButtonStyle.red) # first button, equiv. to hitting in blackjack
+    async def upgrade_multigamble(self, interaction: discord.Interaction, button: discord.ui.Button):
+        economy = self.bot.get_cog("Economy")
+        balance = economy.retrieve_balance(interaction.user.id, interaction.guild.id)
+        dat = economy.retrieve_user_data(interaction.user.id, interaction.guild.id)
+        print(dat)
+        price = 40*7**math.log(dat["multigamble"],2)
+        if(dat["multigamble"] >= 1024):
+            await interaction.response.send_message("The max you can get on multigamble is 1,024 rolls at once. Sorry!", ephemeral=True)
+        if(balance < price):
+            await interaction.response.send_message(f"You need more money! This costs {format_balance(price)} and you only have {format_balance(balance)}.", ephemeral=True)
+            return
+        dat["multigamble"] *= 2
+        print(dat)
+        economy.store_balance(interaction.user.id, balance-price, interaction.guild.id)
+        economy.store_user_data(interaction.user.id, dat, interaction.guild.id)
+        await interaction.response.send_message(f"Success! Multigamble is now at {dat['multigamble']}.", ephemeral=True)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool: # only allow sender to make decisions
+        if interaction.user != self.start_interaction.user:
+            await interaction.response.send_message("Only the author of the command can perform this action.", ephemeral=True) # yell at the poser
+            return False # do not proceed with request
+        return True
 
 class BlackjackView(discord.ui.View):
     def __init__(self, wager, bot, start_interaction):

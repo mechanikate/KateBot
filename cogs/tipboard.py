@@ -81,7 +81,10 @@ class Tipboard(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        if message.guild.id not in tipboard_config:
+        try:
+            if message.guild.id not in tipboard_config:
+                return
+        except:
             return
         tipboard_config_entry = tipboard_config[message.guild.id]
         if(message.channel.id == tipboard_config_entry["channel"]):
