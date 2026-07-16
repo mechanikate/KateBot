@@ -2,7 +2,7 @@ import discord, random, re
 
 from discord import app_commands
 from discord.ext import commands
-# KateBot's emojis for the consuls (originally from Queen's server)
+# KateBot's emojis for the consuls (originally from Queen/consul.p's server)
 consul_emojis = {                        
         "a": "<:Aa:1384672401396076554>",
         "b": "<:Bb:1384672386917601362>",
@@ -31,6 +31,7 @@ consul_emojis = {
         "y": "<:Yy:1384672097665548429>",
         "z": "<:Zz:1384672078518816909>"
 }
+# kate's random wisdom/bullshit
 wisdom_list = [
 	"""1.
 * pack bowl
