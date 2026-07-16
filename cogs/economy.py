@@ -192,30 +192,34 @@ class RegularActivities(commands.Cog):
     async def admin_set_forfeit(self, interaction: discord.Interaction, multiplier: float = 0.5):
         await self.econ_set_mult_handler(interaction, multiplier, "forfeit")
 
-
+# gamba gamba gamba
 class Gambling(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    # the secret algorithm-based /gamble command!
     @app_commands.command(
         name="gamble",
         description="Gamble your life savings"
     )
     async def gamble(self, interaction: discord.Interaction):
+        """ 
+        Gambles 1 dollar at a time. Odds start at P(0.5) to gain anywhere from $0.75 to $1.33 (uniformly distributed), earnings *and* rarity of winning doubles every 3 wins on a per-server basis.
+        """
         user_id = str(interaction.user.id)
         economy = self.bot.get_cog("Economy")
         balance = economy.retrieve_balance(user_id, interaction.guild.id)
         cap = 2**(economy.retrieve_odds_power(interaction.guild.id)//3)
         rand = random.randint(1,cap)
-        if(rand == cap):
-            winnings = cap+random.uniform(-cap/4, cap/3)
-            economy.store_balance(user_id, balance+winnings, interaction.guild.id)
-            economy.store_odds_power(economy.retrieve_odds_power(interaction.guild.id)+1, interaction.guild.id)
-            await interaction.response.send_message("You win ${winnings:.2f}!".format(winnings=winnings))
-            return
-
-        economy.store_balance(user_id, balance-1, interaction.guild.id)
-        await interaction.response.send_message("You lost $1.00 :(")
+        if(rand == cap): # if P(0.5**floor(odds_power/3)) chance hits, then mark as win
+            winnings = cap+random.uniform(-cap/4, cap/3) # this should make /gamble a net gain overall
+            economy.store_balance(user_id, balance+winnings, interaction.guild.id) # add winnings
+            economy.store_odds_power(economy.retrieve_odds_power(interaction.guild.id)+1, interaction.guild.id) # increment odds power
+            await interaction.response.send_message("You win ${winnings:.2f}!".format(winnings=winnings)) # send win message
+            return # exit so we don't hit the loss code
+        # loss code
+        economy.store_balance(user_id, balance-1, interaction.guild.id) # remove $1 from gambler balance
+        await interaction.response.send_message("You lost $1.00 :(") # send loss message
 
     @app_commands.command(
         name="blackjack",
@@ -226,12 +230,12 @@ class Gambling(commands.Cog):
     )
     async def blackjack(self, interaction: discord.Interaction, wager: float = 1.0):
         economy = self.bot.get_cog("Economy")
-        view = BlackjackView(wager, self.bot, interaction)
-        if(wager > max(5,economy.retrieve_balance(interaction.user.id, interaction.guild.id))):
+        view = BlackjackView(wager, self.bot, interaction) # generate the fancy embed
+        if(wager > max(5,economy.retrieve_balance(interaction.user.id, interaction.guild.id))): # safety net for if user gambles far more than they should be able to
             await interaction.response.send_message("You can only gamble up to your balance (or $5 if you have <$5)!")
             return
-        economy.store_balance(interaction.user.id, economy.retrieve_balance(interaction.user.id, interaction.guild.id)-wager, interaction.guild.id)
-        await interaction.response.send_message(embed=BlackjackView.make_blackjack_embed(interaction, view.blackjack), view=view)
+        economy.store_balance(interaction.user.id, economy.retrieve_balance(interaction.user.id, interaction.guild.id)-wager, interaction.guild.id) # withdraw wager from account
+        await interaction.response.send_message(embed=BlackjackView.make_blackjack_embed(interaction, view.blackjack), view=view) # send the embed to user
 
 class BlackjackView(discord.ui.View):
     def __init__(self, wager, bot, start_interaction):
@@ -241,7 +245,7 @@ class BlackjackView(discord.ui.View):
         self.start_interaction = start_interaction
         self.blackjack = BlackjackGame(self.bot, start_interaction.guild.id, start_interaction.user.id, wager)
 
-    async def disable_if_over(self, msg):
+    async def disable_if_over(self, msg): # disable buttons if game is over
         msg = msg.resource if hasattr(msg, "resource") else msg
         if(self.blackjack.game_over or self.blackjack.score()[0] > 21):
             for child in self.children:
@@ -249,42 +253,42 @@ class BlackjackView(discord.ui.View):
             msg = await msg.edit(view=self)
             msg = msg.resource if hasattr(msg, "resource") else msg
 
-    @discord.ui.button(label="Hit", style=discord.ButtonStyle.red)
+    @discord.ui.button(label="Hit", style=discord.ButtonStyle.red) # first button, equiv. to hitting in blackjack
     async def hit(self, interaction: discord.Interaction, button: discord.ui.Button):
         economy = self.bot.get_cog("Economy")
-        economy.store_balance(interaction.user.id, economy.retrieve_balance(interaction.user.id, interaction.guild.id)+self.blackjack.calculate_player_step("hit"), interaction.guild.id)
-        msg = await interaction.response.edit_message(embed=__class__.make_blackjack_embed(interaction, self.blackjack))
+        economy.store_balance(interaction.user.id, economy.retrieve_balance(interaction.user.id, interaction.guild.id)+self.blackjack.calculate_player_step("hit"), interaction.guild.id) # calculate hit and balance storing
+        msg = await interaction.response.edit_message(embed=__class__.make_blackjack_embed(interaction, self.blackjack)) # edit embed to add the card
         await self.disable_if_over(msg)
         msg = msg.resource if hasattr(msg, "resource") else msg
-        if(self.blackjack.player_done):
-            await msg.edit(embed=__class__.make_blackjack_embed(interaction, self.blackjack, phase=1, show_winner=True))
-            await self.disable_if_over(msg)
+        if(self.blackjack.player_done): # only runs if player busted 
+            await msg.edit(embed=__class__.make_blackjack_embed(interaction, self.blackjack, phase=1, show_winner=True)) # show winner and dealer's cards
+            await self.disable_if_over(msg) # disable buttons
             return
 
-    @discord.ui.button(label="Stand", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="Stand", style=discord.ButtonStyle.green) # second button, equiv. to standing in blackjack
     async def stand(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.blackjack.calculate_player_step("stand")
         economy = self.bot.get_cog("Economy")
-        msg = await interaction.response.edit_message(embed=__class__.make_blackjack_embed(interaction, self.blackjack, phase=1))
-        await self.disable_if_over(msg)
-        while 1:
-            await asyncio.sleep(1)
-            if(self.blackjack.player_done and self.blackjack.dealer_done):
-                msg = msg.resource if hasattr(msg, "resource") else msg
-                await msg.edit(embed=__class__.make_blackjack_embed(interaction, self.blackjack, phase=1, show_winner=True))
-                economy.store_balance(interaction.user.id, economy.retrieve_balance(interaction.user.id, interaction.guild.id)+self.blackjack.player_won(), interaction.guild.id)
-                await self.disable_if_over(msg)
-                return
+        msg = await interaction.response.edit_message(embed=__class__.make_blackjack_embed(interaction, self.blackjack, phase=1)) # show dealer cards
+        await self.disable_if_over(msg) # disable buttons since player has finished hitting
+        while 1: # dealer hitting until >=17 loop
+            await asyncio.sleep(1) # wait 1 second between hits for showcasing purposes. this is done before the rest of the loop to allow time for player to see the dealer's original 2 cards
+            if(self.blackjack.player_done and self.blackjack.dealer_done): # if both sides are done
+                msg = msg.resource if hasattr(msg, "resource") else msg # deliberate between 2 classes that get mixed up somehow
+                await msg.edit(embed=__class__.make_blackjack_embed(interaction, self.blackjack, phase=1, show_winner=True)) # show winner and finished cards
+                economy.store_balance(interaction.user.id, economy.retrieve_balance(interaction.user.id, interaction.guild.id)+self.blackjack.player_won(), interaction.guild.id) # store balance plus winnings amount 
+                await self.disable_if_over(msg) # disable buttons
+                return # exit early to not draw another card
             msg = msg.resource if hasattr(msg, "resource") else msg
-            self.blackjack.calculate_dealer_step()
-            msg = await msg.edit(embed=__class__.make_blackjack_embed(interaction, self.blackjack, phase=1))
+            self.blackjack.calculate_dealer_step() # deliberate between dealer hitting and standing
+            msg = await msg.edit(embed=__class__.make_blackjack_embed(interaction, self.blackjack, phase=1)) # show dealer's newly-drawn card
             msg = msg.resource if hasattr(msg, "resource") else msg
 
-    @discord.ui.button(label="Double Down", style=discord.ButtonStyle.blurple)
+    @discord.ui.button(label="Double Down", style=discord.ButtonStyle.blurple) # third button, equiv. to doubling down (i.e. doubling bet, hitting once, and standing) in blackjack
     async def doubledown(self, interaction: discord.Interaction, button: discord.ui.Button):
         economy = self.bot.get_cog("Economy")
-        economy.store_balance(interaction.user.id, economy.retrieve_balance(interaction.user.id, interaction.guild.id)+self.blackjack.calculate_player_step("doubledown"), interaction.guild.id)
-        msg = await interaction.response.edit_message(embed=__class__.make_blackjack_embed(interaction, self.blackjack, phase=1))
+        economy.store_balance(interaction.user.id, economy.retrieve_balance(interaction.user.id, interaction.guild.id)+self.blackjack.calculate_player_step("doubledown"), interaction.guild.id) # withdraw one more initial bet worth of money
+        msg = await interaction.response.edit_message(embed=__class__.make_blackjack_embed(interaction, self.blackjack, phase=1)) # equivalent from now on to the stand loop
         await self.disable_if_over(msg)
         while 1:
             await asyncio.sleep(1)
@@ -299,26 +303,26 @@ class BlackjackView(discord.ui.View):
             msg = await msg.edit(embed=__class__.make_blackjack_embed(interaction, self.blackjack, phase=1))
             msg = msg.resource if hasattr(msg, "resource") else msg
     
-    @discord.ui.button(label="Forfeit", style=discord.ButtonStyle.gray)
+    @discord.ui.button(label="Forfeit", style=discord.ButtonStyle.gray) # fourth button, equiv. to forfeiting (i.e. automatically losing and getting some of your bet back) in blackjack
     async def forfeit(self, interaction: discord.Interaction, button: discord.ui.Button):
         economy = self.bot.get_cog("Economy")
         economy.store_balance(interaction.user.id, economy.retrieve_balance(interaction.user.id, interaction.guild.id)+self.blackjack.calculate_player_step("forfeit"), interaction.guild.id)
-        self.blackjack.forfeit = True
-        self.blackjack.game_over = True
-        msg = await interaction.response.edit_message(embed=__class__.make_blackjack_embed(interaction, self.blackjack, phase=1, show_winner=True, forfeit=True))
-        await self.disable_if_over(msg)
+        self.blackjack.forfeit = True # mark as forfeited
+        self.blackjack.game_over = True # mark game as ended
+        msg = await interaction.response.edit_message(embed=__class__.make_blackjack_embed(interaction, self.blackjack, phase=1, show_winner=True, forfeit=True)) # show forfeit message and dealer cards
+        await self.disable_if_over(msg) # remove buttons
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+    async def interaction_check(self, interaction: discord.Interaction) -> bool: # only allow better to make decisions, auto-applies to all button-decorated methods
         if interaction.user != self.start_interaction.user:
-            await interaction.response.send_message("Only the author of the command can perform this action.", ephemeral=True)
-            return False
+            await interaction.response.send_message("Only the author of the command can perform this action.", ephemeral=True) # yell at the poser
+            return False # do not proceed with request
         return True 
 
     @staticmethod
-    def make_blackjack_embed(interaction, blackjack, phase=0, show_winner=False, forfeit=False):
+    def make_blackjack_embed(interaction, blackjack, phase=0, show_winner=False, forfeit=False): # make the base embed without buttons
         embed = discord.Embed(title="Blackjack")
         player_score, dealer_score = blackjack.score()
-        name_player, value_player, name_dealer, value_dealer = [
+        name_player, value_player, name_dealer, value_dealer = [ # phase 0 does not show dealer's 2nd card, phase 1 shows dealer cards
             (f"{interaction.user.name}'s hand ({player_score})", "`"+"` `".join([card.render() for card in blackjack.player_hand])+"`", f"KateBot's hand ({blackjack.dealer_hand[0].score}+?)", "`"+blackjack.dealer_hand[0].render()+"` `??`"),
             (f"{interaction.user.name}'s hand ({player_score})", "`"+"` `".join([card.render() for card in blackjack.player_hand])+"`", f"KateBot's hand ({dealer_score})", "`"+"` `".join([card.render() for card in blackjack.dealer_hand])+"`"),
         ][phase]
@@ -326,63 +330,62 @@ class BlackjackView(discord.ui.View):
         embed.add_field(name=name_player, value=value_player, inline=False)
         embed.add_field(name=name_dealer, value=value_dealer, inline=False)
 
-        if show_winner:
+        if show_winner: # show winner and logic behind their win if requested
             embed.add_field(name=blackjack.winner(interaction.user.name), value="", inline=False)
 
         return embed
-class Card:
-    SUIT_LOGO_MAP = {"S": "♠", "H": "♥", "C": "♣", "D": "♦"}
-    SUIT_UID_MAP = {"S": 0, "H": 13, "C": 26, "D": 39}
-    RANK_SCORE_MAP = {"2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "J": 10, "Q": 10, "K": 10, "A": 11}
-    RANK_UID_MAP = {"2": 0, "3": 1, "4": 2, "5": 3, "6": 4, "7": 5, "8": 6, "9": 7, "10": 8, "J": 9, "Q": 10, "K": 11, "A": 12}
-    SUITS = list("SHCD")
-    RANKS = list("23456789")+["10","J","Q","K","A"]
-    def __init__(self, suit, rank):
+class Card: # individual card for a deck
+    SUIT_LOGO_MAP = {"S": "♠", "H": "♥", "C": "♣", "D": "♦"} # map suit letter to the unicode character for BlackjackView.make_blackjack_embed
+    SUIT_UID_MAP = {"S": 0, "H": 13, "C": 26, "D": 39} # shift amount so that there is 1 uid per card
+    RANK_SCORE_MAP = {"2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "J": 10, "Q": 10, "K": 10, "A": 11} # scoring rubric for cards. aces have special rules which are handled in BlackjackGame.score_hand
+    RANK_UID_MAP = {"2": 0, "3": 1, "4": 2, "5": 3, "6": 4, "7": 5, "8": 6, "9": 7, "10": 8, "J": 9, "Q": 10, "K": 11, "A": 12} # map card to uuid
+    SUITS = list("SHCD") # all suit types, by their first letter 
+    RANKS = list("23456789")+["10","J","Q","K","A"] # card ranks
+    def __init__(self, suit, rank): # suit is any of SUITS, rank is any of RANKS
         self.suit = suit
         self.rank = rank
-        self.score = self.RANK_SCORE_MAP[rank]
-        self.uid = self.SUIT_UID_MAP[suit]+self.RANK_UID_MAP[rank]
-    def render(self):
-        return self.SUIT_LOGO_MAP[self.suit]+self.rank
+        self.score = self.RANK_SCORE_MAP[rank] # get this card's score, determined by its rank
+        self.uid = self.SUIT_UID_MAP[suit]+self.RANK_UID_MAP[rank] # get card's unique id (uid)
+    def render(self): # printable string for the card
+        return self.SUIT_LOGO_MAP[self.suit]+self.rank # e.g. ♠10 for 10 of spades
     @staticmethod
-    def from_uid(uid):
+    def from_uid(uid): # convert uid to its corresponding card
         rank_id = uid % 13
         suit_id = uid // 13
         return Card(Card.SUITS[suit_id], Card.RANKS[rank_id])
 
-class Deck:
+class Deck: # full deck of cards
     def __init__(self):
         self.deck = []
-        for uid in range(52):
+        for uid in range(52): # create full deck of cards by uid from 0 to 51. not shuffled by default!
             self.deck.append(Card.from_uid(uid))
-    def shuffle(self):
-        self.deck = random.sample(self.deck, 52)
-        return self
-    def draw(self, n=1):
-        drawn = random.sample(self.deck, n)
-        drawn_uids = [card.uid for card in drawn]
-        self.deck = [card for card in self.deck if card.uid not in drawn_uids]
+    def shuffle(self): # shuffle the 52 cards into random order
+        self.deck = random.sample(self.deck, 52) # done via random.sample with the whole deck (length of 52) 
+        return self # return self so that methods can be stacked like Deck().shuffle().draw(n=5)
+    def draw(self, n=1): # draw n cards from the end of the deck
+        drawn = self.deck[-n:]
+        self.deck = self.deck[:-n]
         return drawn
 
-class BlackjackGame:
+class BlackjackGame: # blackjack game logic
     def __init__(self, bot, guild_id, user_id, wager=1):
+        # basic storing
         self.bot = bot
         self.guild_id = guild_id
         self.user_id = user_id
-        self.deck = Deck().shuffle()
-        self.player_hand = self.deck.draw(2)
-        self.dealer_hand = self.deck.draw(2)
         self.wager = wager
-        self.player_done = False
-        self.dealer_done = False
-        self.game_over = False
-        self.forfeit = False
-    def is_player_done(self):
+        # default values
+        self.deck = Deck().shuffle() # create shuffled deck
+        self.player_hand = self.deck.draw(2) # 2 cards for the player
+        self.dealer_hand = self.deck.draw(2) # 2 cards (the second of which is hidden) for the dealer
+        self.player_done, self.dealer_done, self.game_over, self.forfeit = False, False, False, False
+    def is_player_done(self): # determine if player is done by force or by option
         return self.score()[0] > 21 or self.player_done
-    def is_dealer_done(self):
+    def is_dealer_done(self): # determine if dealer must be done drawing
         return self.score()[1] >= 17
     @staticmethod
     def score_hand(hand):
+        # handle aces being 11 by default but 1 if 11 goes over 21
         score = sum([card.score for card in hand if card.rank != "A"])
         aces = [11 for card in hand if card.rank == "A"]
         i = 0
@@ -390,7 +393,7 @@ class BlackjackGame:
             aces[i] = 1
             i+=1
         return score+sum(aces)
-    def score(self):
+    def score(self): # score both hands in a tuple as (player_score, dealer_score)
         return __class__.score_hand(self.player_hand), __class__.score_hand(self.dealer_hand)
     def winner(self, player_name): # get winner explanation
         player_score, dealer_score = self.score()
@@ -413,13 +416,13 @@ class BlackjackGame:
         payout_mults = self.bot.get_cog("Economy").retrieve_payout_mults(self.guild_id)
         player_score, dealer_score = self.score() 
         if(self.forfeit):
-            return payout_mults["forfeit"]*self.wager
+            return payout_mults["forfeit"]*self.wager # default wager/2
         if(player_score > 21):
             return 0
         if(player_score == 21):
-            return payout_mults["blackjack"]*self.wager
+            return payout_mults["blackjack"]*self.wager # default wager*2
         if(dealer_score > 21 or dealer_score < player_score):
-            return payout_mults["win"]*self.wager
+            return payout_mults["win"]*self.wager # default wager*1.5
         if(dealer_score > player_score):
             return 0
         return self.wager
@@ -428,7 +431,7 @@ class BlackjackGame:
             self.dealer_hand.append(*self.deck.draw(1))
             return
         self.dealer_done = True
-    def calculate_player_step(self, move="hit"): # "hit", "stand", "doubledown"
+    def calculate_player_step(self, move="hit"): # accepts any of ["hit", "stand", "doubledown"]
         if(move == "hit"):
             self.player_hand.append(*self.deck.draw(1))
             if(self.score()[0] > 21):
