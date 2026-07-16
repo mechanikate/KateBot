@@ -1,5 +1,5 @@
 import asyncio, discord, os, pathlib, time
-
+from cogs.printer import printt, PRETEXTS 
 from discord.ext import commands
 
 class KateBot(commands.Bot):
@@ -10,22 +10,22 @@ class KateBot(commands.Bot):
         self.ext_dir = pathlib.Path(ext_dir)
 
     async def _load_extensions(self):
-        print("* loading exts...")
+        printt("loading exts...", pretext=PRETEXTS["start"])
         for file in self.ext_dir.rglob("*.py"):
             if file.stem.startswith("_"):
                 continue
             try:
                 await self.load_extension(".".join(file.with_suffix("").parts))
-                print(f"\\--> [PASS] loaded ext {file}")
+                printt(f"loaded ext {file}")
             except commands.ExtensionError as e:
-                print(f"\\--> [FAIL] failed to load ext {file} with error {e}")
-
+                printt(f"failed to load ext {file} with error {e}")
+        printt("done!", pretext=PRETEXTS["end"])
     async def setup_hook(self):
         await self._load_extensions()
         self._watcher = self.loop.create_task(self._cog_watcher())
 
     async def _cog_watcher(self):
-        print("* watching for changes...")
+        printt("watching for changes...", pretext=PRETEXTS["start"])
         last = time.time()
         while 1:
             extensions: set[str] = set()
@@ -35,9 +35,9 @@ class KateBot(commands.Bot):
             for ext in extensions:
                 try:
                     await self.reload_extension(ext)
-                    print(f"\\--> [PASS] reloaded ext {ext}")
+                    printt(f"reloaded ext {ext}")
                 except commands.ExtensionError as e:
-                    print(f"\\--> [FAIL] failed to reload ext {ext} with error {e}")
+                    printt(f"failed to reload ext {ext} with error {e}")
             last = time.time()
             await asyncio.sleep(1)
 
